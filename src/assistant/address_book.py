@@ -1,4 +1,5 @@
 from collections import UserDict
+from datetime import date, datetime, timedelta
 
 
 class Field:
@@ -29,12 +30,27 @@ class Phone(Field):
         super().__init__(value)
 
 
+class Birthday(Field):
+    """Class for storing birthday in DD.MM.YYYY format."""
+
+    def __init__(self, value: str):
+        try:
+            parsed_date = datetime.strptime(value, "%d.%m.%Y").date()
+        except ValueError as exc:
+            raise ValueError("Invalid date format. Use DD.MM.YYYY") from exc
+        super().__init__(parsed_date)
+
+    def __str__(self):
+        return self.value.strftime("%d.%m.%Y")
+
+
 class Record:
     """Class for storing contact information."""
 
     def __init__(self, name: str):
         self.name = Name(name)
         self.phones = []
+        self.birthday = None
 
     def add_phone(self, phone: str):
         """Add new phone to record."""
@@ -64,9 +80,17 @@ class Record:
                 return p
         return None
 
+    def add_birthday(self, birthday: str):
+        """Add or replace birthday for record."""
+        self.birthday = Birthday(birthday)
+
     def __str__(self):
         phones_str = "; ".join(p.value for p in self.phones)
-        return f"Contact name: {self.name.value}, phones: {phones_str}"
+        birthday_str = str(self.birthday) if self.birthday else "not set"
+        return (
+            f"Contact name: {self.name.value}, "
+            f"phones: {phones_str}, birthday: {birthday_str}"
+        )
 
 
 class AddressBook(UserDict):
@@ -86,3 +110,46 @@ class AddressBook(UserDict):
             del self.data[name]
         else:
             raise KeyError("Record not found.")
+
+    @staticmethod
+    def _birthday_for_year(source_date, year):
+        """Return birthday date in the target year with leap day fallback."""
+        try:
+            return date(year, source_date.month, source_date.day)
+        except ValueError:
+            return date(year, 3, 1)
+
+    def get_upcoming_birthdays(self):
+        """Return birthdays within 7 days shifted from weekend to Monday."""
+        today = date.today()
+        upcoming_birthdays = []
+
+        for record in self.data.values():
+            if record.birthday is None:
+                continue
+
+            birthday_this_year = self._birthday_for_year(
+                record.birthday.value, today.year
+            )
+            if birthday_this_year < today:
+                birthday_this_year = self._birthday_for_year(
+                    record.birthday.value, today.year + 1
+                )
+
+            if 0 <= (birthday_this_year - today).days <= 7:
+                congratulation_date = birthday_this_year
+                if congratulation_date.weekday() == 5:
+                    congratulation_date += timedelta(days=2)
+                elif congratulation_date.weekday() == 6:
+                    congratulation_date += timedelta(days=1)
+
+                upcoming_birthdays.append(
+                    {
+                        "name": record.name.value,
+                        "congratulation_date": congratulation_date.strftime(
+                            "%d.%m.%Y"
+                        ),
+                    }
+                )
+
+        return upcoming_birthdays
